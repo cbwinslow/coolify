@@ -5,6 +5,10 @@ set -e # Exit immediately if a command exits with a non-zero status
 ## $1 could be empty, so we need to disable this check
 #set -u # Treat unset variables as an error and exit
 set -o pipefail # Cause a pipeline to return the status of the last command that exited with a non-zero status
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/helpers/common.sh"
+
 CDN="https://cdn.coollabs.io/coolify"
 DATE=$(date +"%Y%m%d-%H%M%S")
 
@@ -13,13 +17,12 @@ DOCKER_VERSION="27.0"
 # TODO: Ask for a user
 CURRENT_USER=$USER
 
-if [ $EUID != 0 ]; then
-    echo "Please run this script as root or with sudo"
-    exit
+if [ "$EUID" -ne 0 ]; then
+    error_exit "Please run this script as root or with sudo"
 fi
 
-echo -e "Welcome to Coolify Installer!"
-echo -e "This script will install everything for you. Sit back and relax."
+log "Welcome to Coolify Installer!"
+log "This script will install everything for you. Sit back and relax."
 echo -e "Source code: https://github.com/coollabsio/coolify/blob/main/scripts/install.sh\n"
 
 # Predefined root user
@@ -118,6 +121,7 @@ if [ "$OS_TYPE" = "arch" ] || [ "$OS_TYPE" = "archarm" ]; then
 else
     OS_VERSION=$(grep -w "VERSION_ID" /etc/os-release | cut -d "=" -f 2 | tr -d '"')
 fi
+OS_CODENAME=$(grep -w "VERSION_CODENAME" /etc/os-release | cut -d "=" -f 2 | tr -d '"')
 
 # Install xargs on Amazon Linux 2023 - lol
 if [ "$OS_TYPE" = 'amzn' ]; then
@@ -140,8 +144,7 @@ fi
 case "$OS_TYPE" in
 arch | ubuntu | debian | raspbian | centos | fedora | rhel | ol | rocky | sles | opensuse-leap | opensuse-tumbleweed | almalinux | amzn | alpine) ;;
 *)
-    echo "This script only supports Debian, Redhat, Arch Linux, Alpine Linux, or SLES based operating systems for now."
-    exit
+    error_exit "This script only supports Debian, Redhat, Arch Linux, Alpine Linux, or SLES based operating systems for now."
     ;;
 esac
 
@@ -194,8 +197,7 @@ sles | opensuse-leap | opensuse-tumbleweed)
     zypper install -y curl wget git jq openssl >/dev/null
     ;;
 *)
-    echo "This script only supports Debian, Redhat, Arch Linux, or SLES based operating systems for now."
-    exit
+    error_exit "This script only supports Debian, Redhat, Arch Linux, or SLES based operating systems for now."
     ;;
 esac
 
@@ -264,7 +266,7 @@ if [ "$SSH_DETECTED" = "false" ]; then
         exit 1
         ;;
     esac
-    echo " - OpenSSH server installed successfully."
+    log "OpenSSH server installed successfully."
     SSH_DETECTED=true
 fi
 
@@ -336,6 +338,18 @@ if ! [ -x "$(command -v docker)" ]; then
                 exit 1
             fi
             ;;
+        "ubuntu")
+            apt-get update -y >/dev/null || error_exit "apt-get update failed"
+            apt-get install -y ca-certificates curl gnupg >/dev/null || error_exit "Failed to install prerequisites"
+            install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+            chmod a+r /etc/apt/keyrings/docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${OS_CODENAME} stable" >/etc/apt/sources.list.d/docker.list
+            apt-get update -y >/dev/null || error_exit "apt-get update failed"
+            apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin >/dev/null || error_exit "Docker installation failed"
+            systemctl start docker >/dev/null 2>&1
+            systemctl enable docker >/dev/null 2>&1
+            ;;
         "fedora")
             if [ -x "$(command -v dnf5)" ]; then
                 # dnf5 is available
@@ -369,9 +383,9 @@ if ! [ -x "$(command -v docker)" ]; then
                 fi
             fi
     esac
-    echo " - Docker installed successfully."
+    log "Docker installed successfully."
 else
-    echo " - Docker is installed."
+    log "Docker is installed."
 fi
 
 echo -e "4. Check Docker Configuration. "
@@ -540,7 +554,7 @@ echo -e " - Please wait."
 getAJoke
 
 bash /data/coolify/source/upgrade.sh "${LATEST_VERSION:-latest}" "${LATEST_HELPER_VERSION:-latest}"
-echo " - Coolify installed successfully."
+log "Coolify installed successfully."
 rm -f $ENV_FILE-$DATE
 
 echo " - Waiting for 20 seconds for Coolify (database migrations) to be ready."
