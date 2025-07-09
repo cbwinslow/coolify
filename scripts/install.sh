@@ -116,6 +116,11 @@ if [ "$OS_TYPE" = "zorin" ]; then
     OS_TYPE="ubuntu"
 fi
 
+# Check if the OS is Kali Linux, if so, change it to debian
+if [ "$OS_TYPE" = "kali" ]; then
+    OS_TYPE="debian"
+fi
+
 if [ "$OS_TYPE" = "arch" ] || [ "$OS_TYPE" = "archarm" ]; then
     OS_VERSION="rolling"
 else
